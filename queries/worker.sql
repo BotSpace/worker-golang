@@ -28,10 +28,14 @@ WHERE p.deleted_at IS NULL;
 UPDATE project SET username = $2, avatar = $3, avatar_file_id = $4 WHERE id = $1;
 
 -- name: ListReleasedProjectIDs :many
+-- Reliz QILINGAN yoki debug ishlatilgan loyihalar — tokensiz (debug-only)
+-- botlarning ham disk charti chiqishi kerak.
 SELECT DISTINCT p.id
 FROM project p
-JOIN relase r ON r.project_id = p.id
-WHERE p.deleted_at IS NULL;
+LEFT JOIN relase r ON r.project_id = p.id
+LEFT JOIN debug d ON d.project_id = p.id
+WHERE p.deleted_at IS NULL
+  AND (r.id IS NOT NULL OR d.id IS NOT NULL);
 
 -- name: SumProjectFileBytes :one
 SELECT COALESCE(SUM(filesize), 0)::bigint FROM file WHERE project_id = $1;

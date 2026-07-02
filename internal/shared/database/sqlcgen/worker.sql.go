@@ -212,10 +212,14 @@ func (q *Queries) ListProjectsWithReleaseToken(ctx context.Context) ([]ListProje
 const listReleasedProjectIDs = `-- name: ListReleasedProjectIDs :many
 SELECT DISTINCT p.id
 FROM project p
-JOIN relase r ON r.project_id = p.id
+LEFT JOIN relase r ON r.project_id = p.id
+LEFT JOIN debug d ON d.project_id = p.id
 WHERE p.deleted_at IS NULL
+  AND (r.id IS NOT NULL OR d.id IS NOT NULL)
 `
 
+// Reliz QILINGAN yoki debug ishlatilgan loyihalar — tokensiz (debug-only)
+// botlarning ham disk charti chiqishi kerak.
 func (q *Queries) ListReleasedProjectIDs(ctx context.Context) ([]int64, error) {
 	rows, err := q.db.Query(ctx, listReleasedProjectIDs)
 	if err != nil {
