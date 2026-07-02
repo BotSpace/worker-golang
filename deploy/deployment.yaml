@@ -1,0 +1,67 @@
+# REFERENCE manifest — ArgoCD/helm-charts'ga ko'chirilganda moslashtiring.
+# Worker'ga backend bilan bir xil env secret'lari + engine podlarini boshqarish
+# uchun RBAC kerak (deployments/secrets/configmaps/services/pods).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: worker-golang
+  namespace: botmother
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: worker-golang
+  namespace: botmother
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets", "configmaps", "services"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: worker-golang
+  namespace: botmother
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: worker-golang
+subjects:
+  - kind: ServiceAccount
+    name: worker-golang
+    namespace: botmother
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-golang
+  namespace: botmother
+spec:
+  replicas: 1 # cron + consumer bitta nusxada; ko'paytirishdan avval cron-lock kerak
+  selector:
+    matchLabels:
+      app: worker-golang
+  template:
+    metadata:
+      labels:
+        app: worker-golang
+    spec:
+      serviceAccountName: worker-golang
+      containers:
+        - name: worker
+          image: registry.iprogrammer.uz/botspace/worker-golang:latest
+          envFrom:
+            - secretRef:
+                name: backend-env # DATABASE_URL/REDIS_URL/MONGO_URL/STORAGE_* shu yerda
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

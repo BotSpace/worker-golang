@@ -1,0 +1,7 @@
+# Default sozlamalar — env o'zgaruvchilar USTUN (backend .env bilan bir xil nomlar):
+# DATABASE_URL, REDIS_URL, MONGO_URL, K8S_NAMESPACE, PROMETHEUS_URL,
+# STORAGE_URL, STORAGE_ID, STORAGE_KEY, STORAGE_REGION, STORAGE_BUCKET_MEDIA,
+# TASK_STREAM, TASK_CONSUMER_GROUP
+k8s_namespace: botmother
+task_stream: "goworker:tasks"
+task_consumer_group: goworker

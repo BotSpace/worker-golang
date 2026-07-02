@@ -1,0 +1,11 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "schema/schema.sql"
+    queries: "queries"
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/shared/database/sqlcgen"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true

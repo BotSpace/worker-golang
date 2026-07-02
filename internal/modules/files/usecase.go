@@ -1,0 +1,40 @@
+// Package files — celery cleanup_expired_files: muddati o'tgan fayllarni
+// S3 storage'dan va DB'dan o'chiradi.
+package files
+
+import (
+	"context"
+
+	"go.uber.org/zap"
+
+	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
+	"github.com/BotSpace/worker-golang/internal/shared/storagex"
+)
+
+type Usecase struct {
+	Q       *sqlcgen.Queries
+	Storage *storagex.Storage
+	Log     *zap.Logger
+}
+
+func (u *Usecase) Run(ctx context.Context) {
+	rows, err := u.Q.ListExpiredFiles(ctx)
+	if err != nil {
+		u.Log.Error("cleanup_expired_files: list", zap.Error(err))
+		return
+	}
+	deleted := 0
+	for _, row := range rows {
+		// Django obj.file.delete(save=False) tartibi: avval storage, keyin DB qatori.
+		if err := u.Storage.Delete(ctx, row.File); err != nil {
+			u.Log.Error("cleanup_expired_files: storage", zap.Int64("pk", row.ID), zap.Error(err))
+			continue
+		}
+		if err := u.Q.DeleteFile(ctx, row.ID); err != nil {
+			u.Log.Error("cleanup_expired_files: db", zap.Int64("pk", row.ID), zap.Error(err))
+			continue
+		}
+		deleted++
+	}
+	u.Log.Info("cleanup_expired_files done", zap.Int("deleted", deleted))
+}
