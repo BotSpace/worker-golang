@@ -2,4 +2,4 @@
 # CI har push'da tag'ni yangilaydi (backend pattern).
 image:
   repository: registry.iprogrammer.uz/botspace/worker-golang
-  tag: "latest"
+  tag: "67b37fd"
