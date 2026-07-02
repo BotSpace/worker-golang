@@ -10,6 +10,7 @@ import (
 // xil nomlar) yoki configs/config.yaml'dan o'qiladi; env ustun.
 type Config struct {
 	DatabaseURL string `mapstructure:"database_url"`
+	DBDsn       string `mapstructure:"db_dsn"` // backend database-secret'dagi nom (DATABASE_URL bo'lmasa shu)
 	RedisURL    string `mapstructure:"redis_url"`
 	MongoURL    string `mapstructure:"mongo_url"`
 
@@ -35,6 +36,7 @@ func Load() (*Config, error) {
 	// Backend .env bilan bir xil env nomlari.
 	for key, env := range map[string]string{
 		"database_url":         "DATABASE_URL",
+		"db_dsn":               "DB_DSN",
 		"redis_url":            "REDIS_URL",
 		"mongo_url":            "MONGO_URL",
 		"k8s_namespace":        "K8S_NAMESPACE",
@@ -61,6 +63,9 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
+	}
+	if cfg.DatabaseURL == "" {
+		cfg.DatabaseURL = cfg.DBDsn
 	}
 	return &cfg, nil
 }
