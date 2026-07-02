@@ -106,3 +106,13 @@ func (c *Consumer) handle(ctx context.Context, msg redis.XMessage) {
 	}
 	c.rdb.XAck(ctx, c.stream, c.group, msg.ID)
 }
+
+// NewClient — oddiy Redis client (stream'dan tashqari ehtiyojlar uchun,
+// masalan botsync token-blacklist).
+func NewClient(redisURL string) (*redis.Client, error) {
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		return nil, err
+	}
+	return redis.NewClient(opts), nil
+}

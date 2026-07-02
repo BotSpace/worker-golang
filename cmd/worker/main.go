@@ -80,7 +80,11 @@ func main() {
 	debugSync := &debugsync.Usecase{Q: q, K8s: k8s, Log: log}
 	fileCleanup := &files.Usecase{Q: q, Storage: storage, Log: log}
 	releaseCleanup := &releases.Usecase{Q: q, K8s: k8s, Log: log}
-	botSync := &botsync.Usecase{Q: q, Storage: storage, Log: log}
+	rdbClient, err := redisq.NewClient(cfg.RedisURL)
+	if err != nil {
+		log.Fatal("redis client", zap.Error(err))
+	}
+	botSync := &botsync.Usecase{Q: q, Storage: storage, Redis: rdbClient, Log: log}
 	diskSnap := &disksnap.Usecase{Q: q, Mongo: mongo, Log: log}
 	bcast := &broadcast.Usecase{Q: q, Mongo: mongo, Storage: storage, Log: log}
 	chatSend := &chatsend.Usecase{Q: q, Storage: storage, Log: log}
