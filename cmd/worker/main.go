@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/signal"
 	"syscall"
@@ -107,6 +108,11 @@ func main() {
 	}
 	consumer.Register("send_message", bcast.Handle)
 	consumer.Register("send_telegram_message", chatSend.Handle)
+	// RELEASE_BOT_TOKEN o'zgarganda backend signal shu taskni enqueue qiladi.
+	consumer.Register("sync_bot", func(ctx context.Context, _ json.RawMessage) error {
+		botSync.Run(ctx)
+		return nil
+	})
 
 	log.Info("worker started",
 		zap.String("stream", cfg.TaskStream),
