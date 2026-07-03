@@ -8,6 +8,15 @@
 //	sync_bot                 har soat :00
 //	snapshot_project_disk    har soat :00
 //
+// Periodik, net-new (Django'da hech qachon bo'lmagan — backend-golang'ning
+// o'z in-process scheduler'idan (internal/server/scheduler.go) shu yerga
+// ko'chirilgan, chunki periodik joblar API process'da emas, worker'da
+// yashashi kerak):
+//
+//	expire_subscriptions             har soat :00
+//	cleanup_expired_refresh_tokens   har soat :00
+//	cleanup_expired_authbot_codes    har soat :00
+//
 // On-demand (Redis Stream goworker:tasks, Django web XADD qiladi):
 //
 //	send_message           — broadcast
@@ -24,6 +33,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/modules/authcleanup"
 	"github.com/BotSpace/worker-golang/internal/modules/botsync"
 	"github.com/BotSpace/worker-golang/internal/modules/broadcast"
 	"github.com/BotSpace/worker-golang/internal/modules/chatsend"
@@ -31,6 +41,7 @@ import (
 	"github.com/BotSpace/worker-golang/internal/modules/disksnap"
 	"github.com/BotSpace/worker-golang/internal/modules/files"
 	"github.com/BotSpace/worker-golang/internal/modules/releases"
+	"github.com/BotSpace/worker-golang/internal/modules/subscriptions"
 	"github.com/BotSpace/worker-golang/internal/shared/config"
 	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/k8sx"
@@ -88,6 +99,8 @@ func main() {
 	diskSnap := &disksnap.Usecase{Q: q, Mongo: mongo, Log: log}
 	bcast := &broadcast.Usecase{Q: q, Mongo: mongo, Storage: storage, Log: log}
 	chatSend := &chatsend.Usecase{Q: q, Storage: storage, Log: log}
+	subsExpiry := &subscriptions.Usecase{Q: q, Log: log}
+	authClean := &authcleanup.Usecase{Q: q, Log: log}
 
 	// --- Cron (celery beat jadvali) ---
 	c := cron.New()
@@ -102,6 +115,9 @@ func main() {
 	mustAdd("*/10 * * * *", "cleanup_failed_releases", releaseCleanup.Run)
 	mustAdd("0 * * * *", "sync_bot", botSync.Run)
 	mustAdd("0 * * * *", "snapshot_project_disk", diskSnap.Run)
+	mustAdd("0 * * * *", "expire_subscriptions", subsExpiry.Run)
+	mustAdd("0 * * * *", "cleanup_expired_refresh_tokens", authClean.RunRefreshTokens)
+	mustAdd("0 * * * *", "cleanup_expired_authbot_codes", authClean.RunAuthbotCodes)
 	c.Start()
 	defer c.Stop()
 

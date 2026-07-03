@@ -73,3 +73,33 @@ CREATE TABLE api_projectresourcesnapshot (
     disk_cms_bytes bigint NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ===================== backend-golang (UUID-PK) jadvallari =====================
+-- Yuqoridagi jadvallar Django'ning eski bigint-PK sxemasi (schema owner:
+-- Django/backend repo). Quyidagilar esa faqat backend-golang'da mavjud —
+-- Django'da hech qachon bo'lmagan (net-new Go-side auth/plan janitorlari,
+-- backend-golang/internal/server/scheduler.go'dan worker'ga ko'chirildi).
+-- FK REFERENCES atayin qo'shilmagan (users/plan/authbot_bot_users jadvallari
+-- bu snapshot'da yo'q) — sqlc'ga faqat ustun turlari kerak.
+
+CREATE TABLE refresh_tokens (
+    id         uuid PRIMARY KEY,
+    user_id    uuid NOT NULL,
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz
+);
+
+CREATE TABLE user_subscription (
+    id         uuid PRIMARY KEY,
+    user_id    uuid NOT NULL,
+    plan_id    uuid NOT NULL,
+    status     text NOT NULL,
+    expires_at timestamptz,
+    updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE authbot_codes (
+    id          uuid PRIMARY KEY,
+    bot_user_id uuid NOT NULL,
+    expires_at  timestamptz NOT NULL
+);

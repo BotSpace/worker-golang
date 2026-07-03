@@ -72,6 +72,19 @@ func main() {
 		fmt.Printf("OK ProjectDataSize(project=%d): %d bayt\n", probe, size)
 	}
 
+	// --- auth_cleanup.sql jadvallari (read-only mavjudlik tekshiruvi —
+	// ExpireActiveSubscriptions/DeleteExpiredRefreshTokens/
+	// DeleteExpiredAuthbotCodes o'zi UPDATE/DELETE, shu sabab bu yerda
+	// chaqirilmaydi; faqat jadval borligini va ulanish ishlashini tekshiramiz) ---
+	for _, table := range []string{"user_subscription", "refresh_tokens", "authbot_codes"} {
+		var n int64
+		if err := pool.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil {
+			fmt.Printf("!! %s: %v\n", table, err)
+		} else {
+			fmt.Printf("OK %s: %d ta qator\n", table, n)
+		}
+	}
+
 	// --- S3 storage (read-only: mavjud fayldan 1 dona o'qib ko'ramiz) ---
 	storage, err := storagex.New(cfg.StorageURL, cfg.StorageID, cfg.StorageKey, cfg.StorageRegion, cfg.StorageBucketMedia)
 	must("storage init", err)

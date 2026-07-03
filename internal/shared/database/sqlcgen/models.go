@@ -17,6 +17,12 @@ type ApiProjectresourcesnapshot struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type AuthbotCode struct {
+	ID        pgtype.UUID
+	BotUserID pgtype.UUID
+	ExpiresAt pgtype.Timestamptz
+}
+
 type Collection struct {
 	ID        int64
 	ProjectID int64
@@ -73,9 +79,25 @@ type Project struct {
 	DeletedAt    pgtype.Timestamptz
 }
 
+type RefreshToken struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	ExpiresAt pgtype.Timestamptz
+	RevokedAt pgtype.Timestamptz
+}
+
 type Relase struct {
 	ID        int64
 	ProjectID int64
 	ServiceID *string
 	Status    string
+}
+
+type UserSubscription struct {
+	ID        pgtype.UUID
+	UserID    pgtype.UUID
+	PlanID    pgtype.UUID
+	Status    string
+	ExpiresAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
