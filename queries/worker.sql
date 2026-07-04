@@ -18,6 +18,9 @@ DELETE FROM file WHERE id = $1;
 -- name: MarkReleaseFailedByService :execrows
 UPDATE relase SET status = 'failed' WHERE service_id = $1;
 
+-- name: MarkDebugFailedByService :execrows
+UPDATE debug SET status = 'failed' WHERE service_id = $1;
+
 -- name: ListProjectsWithReleaseToken :many
 SELECT p.id, p.username, p.avatar, p.avatar_file_id, e.value AS bot_token
 FROM project p

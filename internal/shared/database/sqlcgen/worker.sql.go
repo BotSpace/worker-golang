@@ -240,6 +240,18 @@ func (q *Queries) ListReleasedProjectIDs(ctx context.Context) ([]int64, error) {
 	return items, nil
 }
 
+const markDebugFailedByService = `-- name: MarkDebugFailedByService :execrows
+UPDATE debug SET status = 'failed' WHERE service_id = $1
+`
+
+func (q *Queries) MarkDebugFailedByService(ctx context.Context, serviceID *string) (int64, error) {
+	result, err := q.db.Exec(ctx, markDebugFailedByService, serviceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const markDebugStopping = `-- name: MarkDebugStopping :exec
 UPDATE debug SET status = 'stopping', updated_at = now() WHERE id = $1
 `
