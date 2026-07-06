@@ -52,3 +52,43 @@ func (m *Client) ProjectDataSize(ctx context.Context, projectID int64) (int64, e
 	}
 	return stats.DataSize, nil
 }
+
+// TenantDataSize returns an approximate per-project CMS size in the shared
+// backend-golang CMS database by summing BSON sizes of documents scoped by
+// _project_id across all user collections.
+func (m *Client) TenantDataSize(ctx context.Context, dbName string, tenant any) (int64, error) {
+	db := m.c.Database(dbName)
+	names, err := db.ListCollectionNames(ctx, bson.D{})
+	if err != nil {
+		return 0, err
+	}
+
+	var total int64
+	for _, name := range names {
+		if len(name) >= 7 && name[:7] == "system." {
+			continue
+		}
+		coll := db.Collection(name)
+		cur, err := coll.Aggregate(ctx, mongo.Pipeline{
+			{{Key: "$match", Value: bson.D{{Key: "_project_id", Value: tenant}}}},
+			{{Key: "$project", Value: bson.D{{Key: "size", Value: bson.D{{Key: "$bsonSize", Value: "$$ROOT"}}}}}},
+			{{Key: "$group", Value: bson.D{{Key: "_id", Value: nil}, {Key: "total", Value: bson.D{{Key: "$sum", Value: "$size"}}}}}},
+		})
+		if err != nil {
+			return 0, err
+		}
+
+		var rows []struct {
+			Total int64 `bson:"total"`
+		}
+		if err := cur.All(ctx, &rows); err != nil {
+			_ = cur.Close(ctx)
+			return 0, err
+		}
+		_ = cur.Close(ctx)
+		if len(rows) > 0 {
+			total += rows[0].Total
+		}
+	}
+	return total, nil
+}
