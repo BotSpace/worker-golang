@@ -38,6 +38,7 @@ import (
 	"github.com/BotSpace/worker-golang/internal/modules/botsync"
 	"github.com/BotSpace/worker-golang/internal/modules/broadcast"
 	"github.com/BotSpace/worker-golang/internal/modules/chatsend"
+	"github.com/BotSpace/worker-golang/internal/modules/collabpersist"
 	"github.com/BotSpace/worker-golang/internal/modules/debugsync"
 	"github.com/BotSpace/worker-golang/internal/modules/disksnap"
 	"github.com/BotSpace/worker-golang/internal/modules/files"
@@ -102,6 +103,7 @@ func main() {
 	chatSend := &chatsend.Usecase{Q: q, Storage: storage, Log: log}
 	subsExpiry := &subscriptions.Usecase{Q: q, Log: log}
 	authClean := &authcleanup.Usecase{Q: q, Log: log}
+	collabPersist := &collabpersist.Usecase{Pool: pool, Redis: rdbClient, Log: log}
 
 	// --- Cron (celery beat jadvali) ---
 	c := cron.New()
@@ -153,6 +155,7 @@ func main() {
 		botSync.Run(ctx)
 		return nil
 	})
+	go collabPersist.Run(ctx)
 
 	log.Info("worker started",
 		zap.String("stream", cfg.TaskStream),
