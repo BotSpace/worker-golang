@@ -5,6 +5,7 @@ package debugsync
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,7 +25,7 @@ type Usecase struct {
 
 func (u *Usecase) Run(ctx context.Context) {
 	cutoff := pgtype.Timestamptz{Time: time.Now().Add(-debugLifetime), Valid: true}
-	rows, err := u.Q.ListExpiredRunningDebugs(ctx, cutoff)
+	rows, err := u.Q.ListExpiredRunningDebugsBackend(ctx, cutoff)
 	if err != nil {
 		u.Log.Error("sync_debug: list", zap.Error(err))
 		return
@@ -37,11 +38,19 @@ func (u *Usecase) Run(ctx context.Context) {
 			u.Log.Error("sync_debug: remove", zap.String("service", *row.ServiceID), zap.Error(err))
 			continue
 		}
-		if err := u.Q.MarkDebugStopping(ctx, row.ID); err != nil {
-			u.Log.Error("sync_debug: mark stopping", zap.Int64("id", row.ID), zap.Error(err))
+		if err := u.Q.MarkDebugStoppingBackend(ctx, row.ID); err != nil {
+			u.Log.Error("sync_debug: mark stopping", zap.String("id", uuidString(row.ID)), zap.Error(err))
 		}
 	}
 	if len(rows) > 0 {
 		u.Log.Info("sync_debug done", zap.Int("stopped", len(rows)))
 	}
+}
+
+func uuidString(id pgtype.UUID) string {
+	if !id.Valid {
+		return ""
+	}
+	b := id.Bytes
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
