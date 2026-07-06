@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 )
 
@@ -26,6 +27,10 @@ type Usecase struct {
 func (u *Usecase) RunRefreshTokens(ctx context.Context) {
 	n, err := u.Q.DeleteExpiredRefreshTokens(ctx)
 	if err != nil {
+		if database.IsUndefinedTable(err) {
+			u.Log.Warn("cleanup_expired_refresh_tokens skipped: table does not exist")
+			return
+		}
 		u.Log.Error("cleanup_expired_refresh_tokens", zap.Error(err))
 		return
 	}
@@ -38,6 +43,10 @@ func (u *Usecase) RunRefreshTokens(ctx context.Context) {
 func (u *Usecase) RunAuthbotCodes(ctx context.Context) {
 	n, err := u.Q.DeleteExpiredAuthbotCodes(ctx)
 	if err != nil {
+		if database.IsUndefinedTable(err) {
+			u.Log.Warn("cleanup_expired_authbot_codes skipped: table does not exist")
+			return
+		}
 		u.Log.Error("cleanup_expired_authbot_codes", zap.Error(err))
 		return
 	}

@@ -30,6 +30,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
@@ -110,14 +111,33 @@ func main() {
 			log.Fatal("cron add", zap.String("job", name), zap.Error(err))
 		}
 	}
+	mustAddIfTables := func(spec string, name string, fn func(context.Context), tables ...string) {
+		for _, table := range tables {
+			ok, err := tableExists(ctx, pool, table)
+			if err != nil {
+				log.Warn("cron schema check failed; registering job anyway",
+					zap.String("job", name),
+					zap.String("table", table),
+					zap.Error(err))
+				break
+			}
+			if !ok {
+				log.Warn("cron job disabled: required table does not exist",
+					zap.String("job", name),
+					zap.String("table", table))
+				return
+			}
+		}
+		mustAdd(spec, name, fn)
+	}
 	mustAdd("*/5 * * * *", "sync_debug", debugSync.Run)
 	mustAdd("*/5 * * * *", "cleanup_expired_files", fileCleanup.Run)
 	mustAdd("*/10 * * * *", "cleanup_failed_releases", releaseCleanup.Run)
 	mustAdd("0 * * * *", "sync_bot", botSync.Run)
 	mustAdd("0 * * * *", "snapshot_project_disk", diskSnap.Run)
-	mustAdd("0 * * * *", "expire_subscriptions", subsExpiry.Run)
-	mustAdd("0 * * * *", "cleanup_expired_refresh_tokens", authClean.RunRefreshTokens)
-	mustAdd("0 * * * *", "cleanup_expired_authbot_codes", authClean.RunAuthbotCodes)
+	mustAddIfTables("0 * * * *", "expire_subscriptions", subsExpiry.Run, "user_subscription")
+	mustAddIfTables("0 * * * *", "cleanup_expired_refresh_tokens", authClean.RunRefreshTokens, "refresh_tokens")
+	mustAddIfTables("0 * * * *", "cleanup_expired_authbot_codes", authClean.RunAuthbotCodes, "authbot_codes")
 	c.Start()
 	defer c.Stop()
 
@@ -142,4 +162,10 @@ func main() {
 		log.Fatal("consumer", zap.Error(err))
 	}
 	log.Info("worker stopped")
+}
+
+func tableExists(ctx context.Context, pool *pgxpool.Pool, table string) (bool, error) {
+	var ok bool
+	err := pool.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&ok)
+	return ok, err
 }

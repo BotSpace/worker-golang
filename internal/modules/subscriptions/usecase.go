@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 )
 
@@ -24,11 +25,19 @@ type Usecase struct {
 func (u *Usecase) Run(ctx context.Context) {
 	toGrace, err := u.Q.ExpireActiveSubscriptions(ctx)
 	if err != nil {
+		if database.IsUndefinedTable(err) {
+			u.Log.Warn("expire_subscriptions skipped: table does not exist")
+			return
+		}
 		u.Log.Error("expire_subscriptions: active->grace_period", zap.Error(err))
 		return
 	}
 	suspended, err := u.Q.SuspendGracePeriodSubscriptions(ctx)
 	if err != nil {
+		if database.IsUndefinedTable(err) {
+			u.Log.Warn("expire_subscriptions skipped: table does not exist")
+			return
+		}
 		u.Log.Error("expire_subscriptions: grace_period->suspended", zap.Error(err))
 		return
 	}

@@ -12,6 +12,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -48,13 +49,22 @@ func (c *Client) call(ctx context.Context, method string, payload any, out any) 
 		return err
 	}
 	defer resp.Body.Close()
-	return decode(resp.Body, out)
+	return decode(resp, out)
 }
 
-func decode(r io.Reader, out any) error {
-	var ar apiResponse
-	if err := json.NewDecoder(r).Decode(&ar); err != nil {
+func decode(resp *http.Response, out any) error {
+	contentType := resp.Header.Get("Content-Type")
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
 		return err
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("telegram: status %d, content-type %q, body %q", resp.StatusCode, contentType, bodySnippet(body))
+	}
+
+	var ar apiResponse
+	if err := json.Unmarshal(body, &ar); err != nil {
+		return fmt.Errorf("telegram: invalid JSON response, status %d, content-type %q, body %q: %w", resp.StatusCode, contentType, bodySnippet(body), err)
 	}
 	if !ar.Ok {
 		return fmt.Errorf("telegram: %s", ar.Description)
@@ -63,6 +73,14 @@ func decode(r io.Reader, out any) error {
 		return json.Unmarshal(ar.Result, out)
 	}
 	return nil
+}
+
+func bodySnippet(body []byte) string {
+	s := strings.TrimSpace(string(body))
+	if len(s) > 240 {
+		s = s[:240] + "..."
+	}
+	return s
 }
 
 // --- Yuboriladigan tiplar ---
@@ -167,7 +185,7 @@ func (c *Client) SendMediaUpload(ctx context.Context, method, field string, chat
 	}
 	defer resp.Body.Close()
 	var m Message
-	if err := decode(resp.Body, &m); err != nil {
+	if err := decode(resp, &m); err != nil {
 		return nil, err
 	}
 	return &m, nil

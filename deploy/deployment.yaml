@@ -58,7 +58,13 @@ spec:
           image: registry.iprogrammer.uz/botspace/worker-golang:latest
           envFrom:
             - secretRef:
-                name: backend-env # DATABASE_URL/REDIS_URL/MONGO_URL/STORAGE_* shu yerda
+                name: backend-golang-db # APP_DB_*; worker DATABASE_URL'ni shundan yig'adi
+            - secretRef:
+                name: botmother-secret # STORAGE_*
+            - secretRef:
+                name: mongo-secret
+            - secretRef:
+                name: redis-secret
           resources:
             requests:
               cpu: 50m
