@@ -18,6 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 	"github.com/BotSpace/worker-golang/internal/shared/storagex"
 	"github.com/BotSpace/worker-golang/internal/shared/telegramx"
@@ -75,9 +76,9 @@ func (u *Usecase) Run(ctx context.Context) {
 				}
 				newBad++
 				u.Log.Warn("sync_bot: token yaroqsiz, blacklist'ga qo'shildi",
-					zap.Int64("project", row.ID), zap.Error(err))
+					zap.String("project", database.UUIDString(row.ID)), zap.Error(err))
 			} else {
-				u.Log.Warn("sync_bot: project failed", zap.Int64("project", row.ID), zap.Error(err))
+				u.Log.Warn("sync_bot: project failed", zap.String("project", database.UUIDString(row.ID)), zap.Error(err))
 			}
 			continue
 		}
@@ -123,7 +124,7 @@ func (u *Usecase) syncOne(ctx context.Context, row sqlcgen.ListProjectsWithRelea
 		avatar = &name
 		avatarFileID = &fileID
 		changed = true
-		u.Log.Info("bot avatar updated", zap.Int64("project", row.ID), zap.String("avatar", name))
+		u.Log.Info("bot avatar updated", zap.String("project", database.UUIDString(row.ID)), zap.String("avatar", name))
 	}
 
 	if !changed {

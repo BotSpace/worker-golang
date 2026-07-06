@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 	"github.com/BotSpace/worker-golang/internal/shared/mongox"
 	"github.com/BotSpace/worker-golang/internal/shared/storagex"
@@ -17,7 +18,7 @@ import (
 )
 
 type Args struct {
-	MessageID int64 `json:"message_id"`
+	MessageID string `json:"message_id"`
 }
 
 // Django MessageModel.buttons: 2D massiv [{title, link?, callback_data?,
@@ -42,9 +43,13 @@ func (u *Usecase) Handle(ctx context.Context, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return err
 	}
-	msg, err := u.Q.GetMessage(ctx, args.MessageID)
+	messageID, err := database.ParseUUID(args.MessageID)
 	if err != nil {
-		u.Log.Error("broadcast: message topilmadi", zap.Int64("id", args.MessageID), zap.Error(err))
+		return err
+	}
+	msg, err := u.Q.GetMessage(ctx, messageID)
+	if err != nil {
+		u.Log.Error("broadcast: message topilmadi", zap.String("id", args.MessageID), zap.Error(err))
 		return nil // qayta urinish befoyda
 	}
 
@@ -54,7 +59,7 @@ func (u *Usecase) Handle(ctx context.Context, raw json.RawMessage) error {
 
 	hasUsers, err := u.Q.HasUsersCollection(ctx, msg.ProjectID)
 	if err != nil || !hasUsers {
-		u.Log.Error("broadcast: users kolleksiyasi yo'q", zap.Int64("project", msg.ProjectID))
+		u.Log.Error("broadcast: users kolleksiyasi yo'q", zap.String("project", database.UUIDString(msg.ProjectID)))
 		fail()
 		return nil
 	}
@@ -64,16 +69,21 @@ func (u *Usecase) Handle(ctx context.Context, raw json.RawMessage) error {
 		// backend release_bot_token fallback: BOT_TOKEN (debug)
 		token, err = u.Q.GetProjectEnv(ctx, sqlcgen.GetProjectEnvParams{ProjectID: msg.ProjectID, Key: "BOT_TOKEN"})
 		if err != nil {
-			u.Log.Error("broadcast: bot token yo'q", zap.Int64("project", msg.ProjectID))
+			u.Log.Error("broadcast: bot token yo'q", zap.String("project", database.UUIDString(msg.ProjectID)))
 			fail()
 			return nil
 		}
 	}
 	tg := telegramx.New(token)
 
-	users, err := u.Mongo.ProjectUsers(ctx, msg.ProjectID)
+	if msg.ProjectLegacyID == nil {
+		u.Log.Error("broadcast: project legacy_id yo'q", zap.String("project", database.UUIDString(msg.ProjectID)))
+		fail()
+		return nil
+	}
+	users, err := u.Mongo.ProjectUsers(ctx, int64(*msg.ProjectLegacyID))
 	if err != nil {
-		u.Log.Error("broadcast: mongo users", zap.Int64("project", msg.ProjectID), zap.Error(err))
+		u.Log.Error("broadcast: mongo users", zap.String("project", database.UUIDString(msg.ProjectID)), zap.Error(err))
 		fail()
 		return nil
 	}
@@ -121,14 +131,12 @@ func (u *Usecase) Handle(ctx context.Context, raw json.RawMessage) error {
 		status = "failed"
 	}
 	_ = u.Q.UpdateMessageResult(ctx, sqlcgen.UpdateMessageResultParams{ID: msg.ID, Done: done, Fail: failed, Status: status})
-	u.Log.Info("broadcast done", zap.Int64("message", msg.ID),
+	u.Log.Info("broadcast done", zap.String("message", database.UUIDString(msg.ID)),
 		zap.Int64("done", done), zap.Int64("fail", failed), zap.Int64("total", total))
 	return nil
 }
 
-// sendOne — bitta userga yuborish. Media bo'lsa: file_id kesh → tez; birinchi
-// yuborishda S3'dan yuklab upload qilinadi va file_id qaytadi.
-func (u *Usecase) sendOne(ctx context.Context, tg *telegramx.Client, msg sqlcgen.Message, chatID int64, cachedFileID string, kb *telegramx.Keyboard) (sent bool, newFileID string, err error) {
+func (u *Usecase) sendOne(ctx context.Context, tg *telegramx.Client, msg sqlcgen.GetMessageRow, chatID int64, cachedFileID string, kb *telegramx.Keyboard) (sent bool, newFileID string, err error) {
 	switch msg.MessageType {
 	case "photo", "video":
 		method, field := "sendPhoto", "photo"
@@ -139,23 +147,7 @@ func (u *Usecase) sendOne(ctx context.Context, tg *telegramx.Client, msg sqlcgen
 			_, err = tg.SendMediaByFileID(ctx, method, field, chatID, cachedFileID, msg.Caption, kb)
 			return err == nil, "", err
 		}
-		if msg.File == nil || *msg.File == "" {
-			return false, "", nil
-		}
-		content, rerr := u.Storage.Read(ctx, *msg.File)
-		if rerr != nil {
-			return false, "", rerr
-		}
-		m, serr := tg.SendMediaUpload(ctx, method, field, chatID, *msg.File, content, msg.Caption, kb)
-		if serr != nil {
-			return false, "", serr
-		}
-		if msg.MessageType == "photo" && len(m.Photo) > 0 {
-			newFileID = m.Photo[len(m.Photo)-1].FileID
-		} else if m.Video != nil {
-			newFileID = m.Video.FileID
-		}
-		return true, newFileID, nil
+		return false, "", nil
 	default:
 		_, err = tg.SendMessage(ctx, chatID, msg.Caption, "", kb)
 		return err == nil, "", err

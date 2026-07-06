@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 	"github.com/BotSpace/worker-golang/internal/shared/storagex"
 )
@@ -26,12 +27,12 @@ func (u *Usecase) Run(ctx context.Context) {
 	deleted := 0
 	for _, row := range rows {
 		// Django obj.file.delete(save=False) tartibi: avval storage, keyin DB qatori.
-		if err := u.Storage.Delete(ctx, row.File); err != nil {
-			u.Log.Error("cleanup_expired_files: storage", zap.Int64("pk", row.ID), zap.Error(err))
+		if err := u.Storage.Delete(ctx, row.FilePath); err != nil {
+			u.Log.Error("cleanup_expired_files: storage", zap.String("id", database.UUIDString(row.ID)), zap.Error(err))
 			continue
 		}
 		if err := u.Q.DeleteFile(ctx, row.ID); err != nil {
-			u.Log.Error("cleanup_expired_files: db", zap.Int64("pk", row.ID), zap.Error(err))
+			u.Log.Error("cleanup_expired_files: db", zap.String("id", database.UUIDString(row.ID)), zap.Error(err))
 			continue
 		}
 		deleted++

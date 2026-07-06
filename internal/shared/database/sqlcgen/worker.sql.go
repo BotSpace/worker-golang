@@ -15,36 +15,55 @@ const deleteFile = `-- name: DeleteFile :exec
 DELETE FROM file WHERE id = $1
 `
 
-func (q *Queries) DeleteFile(ctx context.Context, id int64) error {
+func (q *Queries) DeleteFile(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, deleteFile, id)
 	return err
 }
 
 const getFilePath = `-- name: GetFilePath :one
-SELECT file FROM file WHERE id = $1
+SELECT file_path FROM file WHERE id = $1
 `
 
-func (q *Queries) GetFilePath(ctx context.Context, id int64) (string, error) {
+func (q *Queries) GetFilePath(ctx context.Context, id pgtype.UUID) (string, error) {
 	row := q.db.QueryRow(ctx, getFilePath, id)
-	var file string
-	err := row.Scan(&file)
-	return file, err
+	var file_path string
+	err := row.Scan(&file_path)
+	return file_path, err
 }
 
 const getMessage = `-- name: GetMessage :one
-SELECT id, project_id, caption, message_type, file, file_id, button_type, buttons, total, done, fail, status
-FROM message WHERE id = $1
+SELECT m.id, m.project_id, p.legacy_id AS project_legacy_id,
+       m.caption, m.message_type, m.file_id, m.button_type, m.buttons,
+       m.total, m.done, m.fail, m.status
+FROM message m
+JOIN projects p ON p.id = m.project_id
+WHERE m.id = $1
 `
 
-func (q *Queries) GetMessage(ctx context.Context, id int64) (Message, error) {
+type GetMessageRow struct {
+	ID              pgtype.UUID
+	ProjectID       pgtype.UUID
+	ProjectLegacyID *int32
+	Caption         string
+	MessageType     string
+	FileID          *string
+	ButtonType      string
+	Buttons         []byte
+	Total           int64
+	Done            int64
+	Fail            int64
+	Status          string
+}
+
+func (q *Queries) GetMessage(ctx context.Context, id pgtype.UUID) (GetMessageRow, error) {
 	row := q.db.QueryRow(ctx, getMessage, id)
-	var i Message
+	var i GetMessageRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
+		&i.ProjectLegacyID,
 		&i.Caption,
 		&i.MessageType,
-		&i.File,
 		&i.FileID,
 		&i.ButtonType,
 		&i.Buttons,
@@ -61,7 +80,7 @@ SELECT value FROM enviroment WHERE project_id = $1 AND key = $2
 `
 
 type GetProjectEnvParams struct {
-	ProjectID int64
+	ProjectID pgtype.UUID
 	Key       string
 }
 
@@ -73,10 +92,10 @@ func (q *Queries) GetProjectEnv(ctx context.Context, arg GetProjectEnvParams) (s
 }
 
 const hasUsersCollection = `-- name: HasUsersCollection :one
-SELECT EXISTS (SELECT 1 FROM collection WHERE project_id = $1 AND name = 'users')
+SELECT EXISTS (SELECT 1 FROM collection WHERE project_id = $1 AND slug = 'users' AND deleted_at IS NULL)
 `
 
-func (q *Queries) HasUsersCollection(ctx context.Context, projectID int64) (bool, error) {
+func (q *Queries) HasUsersCollection(ctx context.Context, projectID pgtype.UUID) (bool, error) {
 	row := q.db.QueryRow(ctx, hasUsersCollection, projectID)
 	var exists bool
 	err := row.Scan(&exists)
@@ -84,12 +103,12 @@ func (q *Queries) HasUsersCollection(ctx context.Context, projectID int64) (bool
 }
 
 const insertDiskSnapshot = `-- name: InsertDiskSnapshot :exec
-INSERT INTO api_projectresourcesnapshot (project_id, disk_bytes, disk_files_bytes, disk_cms_bytes, created_at)
+INSERT INTO project_resource_snapshot (project_id, disk_bytes, disk_files_bytes, disk_cms_bytes, created_at)
 VALUES ($1, $2, $3, $4, now())
 `
 
 type InsertDiskSnapshotParams struct {
-	ProjectID      int64
+	ProjectID      pgtype.UUID
 	DiskBytes      int64
 	DiskFilesBytes int64
 	DiskCmsBytes   int64
@@ -106,12 +125,12 @@ func (q *Queries) InsertDiskSnapshot(ctx context.Context, arg InsertDiskSnapshot
 }
 
 const listExpiredFiles = `-- name: ListExpiredFiles :many
-SELECT id, file FROM file WHERE expires_at IS NOT NULL AND expires_at < now()
+SELECT id, file_path FROM file WHERE expires_at IS NOT NULL AND expires_at < now()
 `
 
 type ListExpiredFilesRow struct {
-	ID   int64
-	File string
+	ID       pgtype.UUID
+	FilePath string
 }
 
 func (q *Queries) ListExpiredFiles(ctx context.Context) ([]ListExpiredFilesRow, error) {
@@ -123,7 +142,7 @@ func (q *Queries) ListExpiredFiles(ctx context.Context) ([]ListExpiredFilesRow, 
 	var items []ListExpiredFilesRow
 	for rows.Next() {
 		var i ListExpiredFilesRow
-		if err := rows.Scan(&i.ID, &i.File); err != nil {
+		if err := rows.Scan(&i.ID, &i.FilePath); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -137,14 +156,15 @@ func (q *Queries) ListExpiredFiles(ctx context.Context) ([]ListExpiredFilesRow, 
 const listExpiredRunningDebugs = `-- name: ListExpiredRunningDebugs :many
 SELECT d.id, d.service_id
 FROM debug d
-JOIN project p ON p.id = d.project_id
+JOIN projects p ON p.id = d.project_id
 WHERE d.status = 'running'
   AND d.updated_at <= $1
   AND p.is_template = false
+  AND p.deleted_at IS NULL
 `
 
 type ListExpiredRunningDebugsRow struct {
-	ID        int64
+	ID        pgtype.UUID
 	ServiceID *string
 }
 
@@ -170,13 +190,13 @@ func (q *Queries) ListExpiredRunningDebugs(ctx context.Context, updatedAt pgtype
 
 const listProjectsWithReleaseToken = `-- name: ListProjectsWithReleaseToken :many
 SELECT p.id, p.username, p.avatar, p.avatar_file_id, e.value AS bot_token
-FROM project p
+FROM projects p
 JOIN enviroment e ON e.project_id = p.id AND e.key = 'RELEASE_BOT_TOKEN'
 WHERE p.deleted_at IS NULL
 `
 
 type ListProjectsWithReleaseTokenRow struct {
-	ID           int64
+	ID           pgtype.UUID
 	Username     *string
 	Avatar       *string
 	AvatarFileID *string
@@ -211,7 +231,7 @@ func (q *Queries) ListProjectsWithReleaseToken(ctx context.Context) ([]ListProje
 
 const listReleasedProjectIDs = `-- name: ListReleasedProjectIDs :many
 SELECT DISTINCT p.id
-FROM project p
+FROM projects p
 LEFT JOIN relase r ON r.project_id = p.id
 LEFT JOIN debug d ON d.project_id = p.id
 WHERE p.deleted_at IS NULL
@@ -220,19 +240,53 @@ WHERE p.deleted_at IS NULL
 
 // Reliz QILINGAN yoki debug ishlatilgan loyihalar — tokensiz (debug-only)
 // botlarning ham disk charti chiqishi kerak.
-func (q *Queries) ListReleasedProjectIDs(ctx context.Context) ([]int64, error) {
+func (q *Queries) ListReleasedProjectIDs(ctx context.Context) ([]pgtype.UUID, error) {
 	rows, err := q.db.Query(ctx, listReleasedProjectIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int64
+	var items []pgtype.UUID
 	for rows.Next() {
-		var id int64
+		var id pgtype.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReleasedProjectsForDisk = `-- name: ListReleasedProjectsForDisk :many
+SELECT DISTINCT p.id, p.legacy_id
+FROM projects p
+LEFT JOIN relase r ON r.project_id = p.id
+LEFT JOIN debug d ON d.project_id = p.id
+WHERE p.deleted_at IS NULL
+  AND (r.id IS NOT NULL OR d.id IS NOT NULL)
+`
+
+type ListReleasedProjectsForDiskRow struct {
+	ID       pgtype.UUID
+	LegacyID *int32
+}
+
+func (q *Queries) ListReleasedProjectsForDisk(ctx context.Context) ([]ListReleasedProjectsForDiskRow, error) {
+	rows, err := q.db.Query(ctx, listReleasedProjectsForDisk)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReleasedProjectsForDiskRow
+	for rows.Next() {
+		var i ListReleasedProjectsForDiskRow
+		if err := rows.Scan(&i.ID, &i.LegacyID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -256,7 +310,7 @@ const markDebugStopping = `-- name: MarkDebugStopping :exec
 UPDATE debug SET status = 'stopping', updated_at = now() WHERE id = $1
 `
 
-func (q *Queries) MarkDebugStopping(ctx context.Context, id int64) error {
+func (q *Queries) MarkDebugStopping(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markDebugStopping, id)
 	return err
 }
@@ -265,7 +319,7 @@ const markMessageFailed = `-- name: MarkMessageFailed :exec
 UPDATE message SET status = 'failed' WHERE id = $1
 `
 
-func (q *Queries) MarkMessageFailed(ctx context.Context, id int64) error {
+func (q *Queries) MarkMessageFailed(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markMessageFailed, id)
 	return err
 }
@@ -286,7 +340,7 @@ const sumProjectFileBytes = `-- name: SumProjectFileBytes :one
 SELECT COALESCE(SUM(filesize), 0)::bigint FROM file WHERE project_id = $1
 `
 
-func (q *Queries) SumProjectFileBytes(ctx context.Context, projectID int64) (int64, error) {
+func (q *Queries) SumProjectFileBytes(ctx context.Context, projectID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, sumProjectFileBytes, projectID)
 	var column_1 int64
 	err := row.Scan(&column_1)
@@ -298,7 +352,7 @@ UPDATE message SET file_id = $2 WHERE id = $1
 `
 
 type UpdateMessageFileIDParams struct {
-	ID     int64
+	ID     pgtype.UUID
 	FileID *string
 }
 
@@ -312,7 +366,7 @@ UPDATE message SET done = $2, fail = $3, status = $4 WHERE id = $1
 `
 
 type UpdateMessageResultParams struct {
-	ID     int64
+	ID     pgtype.UUID
 	Done   int64
 	Fail   int64
 	Status string
@@ -333,7 +387,7 @@ UPDATE message SET total = $2 WHERE id = $1
 `
 
 type UpdateMessageTotalParams struct {
-	ID    int64
+	ID    pgtype.UUID
 	Total int64
 }
 
@@ -343,11 +397,11 @@ func (q *Queries) UpdateMessageTotal(ctx context.Context, arg UpdateMessageTotal
 }
 
 const updateProjectBotInfo = `-- name: UpdateProjectBotInfo :exec
-UPDATE project SET username = $2, avatar = $3, avatar_file_id = $4 WHERE id = $1
+UPDATE projects SET username = $2, avatar = $3, avatar_file_id = $4 WHERE id = $1
 `
 
 type UpdateProjectBotInfoParams struct {
-	ID           int64
+	ID           pgtype.UUID
 	Username     *string
 	Avatar       *string
 	AvatarFileID *string

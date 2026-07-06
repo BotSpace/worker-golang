@@ -10,6 +10,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 	"github.com/BotSpace/worker-golang/internal/shared/storagex"
 	"github.com/BotSpace/worker-golang/internal/shared/telegramx"
@@ -18,9 +19,9 @@ import (
 type Args struct {
 	ChatID      int64  `json:"chat_id"`
 	MessageType string `json:"message_type"`
-	ProjectID   int64  `json:"project_id"`
+	ProjectID   string `json:"project_id"`
 	Text        string `json:"text"`
-	FileID      *int64 `json:"file_id"` // FileModel pk (Telegram file_id EMAS)
+	FileID      string `json:"file_id"` // FileModel UUID (Telegram file_id EMAS)
 }
 
 type Usecase struct {
@@ -58,11 +59,15 @@ func (u *Usecase) Handle(ctx context.Context, raw json.RawMessage) error {
 }
 
 func (u *Usecase) send(ctx context.Context, args Args) error {
-	token, err := u.Q.GetProjectEnv(ctx, sqlcgen.GetProjectEnvParams{ProjectID: args.ProjectID, Key: "RELEASE_BOT_TOKEN"})
+	projectID, err := database.ParseUUID(args.ProjectID)
 	if err != nil {
-		token, err = u.Q.GetProjectEnv(ctx, sqlcgen.GetProjectEnvParams{ProjectID: args.ProjectID, Key: "BOT_TOKEN"})
+		return fmt.Errorf("invalid project_id: %w", err)
+	}
+	token, err := u.Q.GetProjectEnv(ctx, sqlcgen.GetProjectEnvParams{ProjectID: projectID, Key: "RELEASE_BOT_TOKEN"})
+	if err != nil {
+		token, err = u.Q.GetProjectEnv(ctx, sqlcgen.GetProjectEnvParams{ProjectID: projectID, Key: "BOT_TOKEN"})
 		if err != nil {
-			return fmt.Errorf("bot token yo'q (project=%d)", args.ProjectID)
+			return fmt.Errorf("bot token yo'q (project=%s)", args.ProjectID)
 		}
 	}
 	tg := telegramx.New(token)
@@ -73,12 +78,16 @@ func (u *Usecase) send(ctx context.Context, args Args) error {
 		return err
 	}
 
-	if args.FileID == nil {
+	if args.FileID == "" {
 		return fmt.Errorf("media uchun file_id yo'q")
 	}
-	path, err := u.Q.GetFilePath(ctx, *args.FileID)
+	fileID, err := database.ParseUUID(args.FileID)
 	if err != nil {
-		return fmt.Errorf("file topilmadi pk=%d: %w", *args.FileID, err)
+		return fmt.Errorf("invalid file_id: %w", err)
+	}
+	path, err := u.Q.GetFilePath(ctx, fileID)
+	if err != nil {
+		return fmt.Errorf("file topilmadi id=%s: %w", args.FileID, err)
 	}
 	content, err := u.Storage.Read(ctx, path)
 	if err != nil {

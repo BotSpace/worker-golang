@@ -49,27 +49,38 @@ func main() {
 	must("ListProjectsWithReleaseToken", err)
 	fmt.Printf("OK ListProjectsWithReleaseToken: %d ta loyiha\n", len(tokens))
 
-	var probe int64 = -1
+	var probe pgtype.UUID
+	var legacyProbe int64
 	if len(ids) > 0 {
 		probe = ids[0]
 		fb, err := q.SumProjectFileBytes(ctx, probe)
 		must("SumProjectFileBytes", err)
-		fmt.Printf("OK SumProjectFileBytes(project=%d): %d bayt\n", probe, fb)
+		fmt.Printf("OK SumProjectFileBytes(project=%s): %d bayt\n", database.UUIDString(probe), fb)
+	}
+	diskProjects, err := q.ListReleasedProjectsForDisk(ctx)
+	must("ListReleasedProjectsForDisk", err)
+	for _, project := range diskProjects {
+		if project.LegacyID != nil {
+			legacyProbe = int64(*project.LegacyID)
+			break
+		}
 	}
 
 	// --- Mongo ---
 	mongo, err := mongox.New(ctx, cfg.MongoURL)
 	must("mongo connect", err)
-	if probe > 0 {
-		users, err := mongo.ProjectUsers(ctx, probe)
+	if legacyProbe > 0 {
+		users, err := mongo.ProjectUsers(ctx, legacyProbe)
 		if err != nil {
-			fmt.Printf("!! ProjectUsers(project=%d): %v (users kolleksiyasi bo'lmasligi normal)\n", probe, err)
+			fmt.Printf("!! ProjectUsers(project=%d): %v (users kolleksiyasi bo'lmasligi normal)\n", legacyProbe, err)
 		} else {
-			fmt.Printf("OK ProjectUsers(project=%d): %d ta user\n", probe, len(users))
+			fmt.Printf("OK ProjectUsers(project=%d): %d ta user\n", legacyProbe, len(users))
 		}
-		size, err := mongo.ProjectDataSize(ctx, probe)
+	}
+	if probe.Valid {
+		size, err := mongo.TenantDataSize(ctx, "botspace_cms", database.UUIDString(probe))
 		must("ProjectDataSize", err)
-		fmt.Printf("OK ProjectDataSize(project=%d): %d bayt\n", probe, size)
+		fmt.Printf("OK ProjectDataSize(project=%s): %d bayt\n", database.UUIDString(probe), size)
 	}
 
 	// --- auth_cleanup.sql jadvallari (read-only mavjudlik tekshiruvi —
@@ -89,7 +100,7 @@ func main() {
 	storage, err := storagex.New(cfg.StorageURL, cfg.StorageID, cfg.StorageKey, cfg.StorageRegion, cfg.StorageBucketMedia)
 	must("storage init", err)
 	var anyFile string
-	if err := pool.QueryRow(ctx, "SELECT file FROM file ORDER BY id DESC LIMIT 1").Scan(&anyFile); err == nil {
+	if err := pool.QueryRow(ctx, "SELECT file_path FROM file ORDER BY id DESC LIMIT 1").Scan(&anyFile); err == nil {
 		if content, err := storage.Read(ctx, anyFile); err != nil {
 			fmt.Printf("!! storage read (%s): %v\n", anyFile, err)
 		} else {

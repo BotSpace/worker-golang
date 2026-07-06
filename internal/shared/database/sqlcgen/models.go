@@ -8,15 +8,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type ApiProjectresourcesnapshot struct {
-	ID             int64
-	ProjectID      int64
-	DiskBytes      int64
-	DiskFilesBytes int64
-	DiskCmsBytes   int64
-	CreatedAt      pgtype.Timestamptz
-}
-
 type AuthbotCode struct {
 	ID        pgtype.UUID
 	BotUserID pgtype.UUID
@@ -24,14 +15,18 @@ type AuthbotCode struct {
 }
 
 type Collection struct {
-	ID        int64
-	ProjectID int64
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
 	Name      string
+	Slug      string
+	System    bool
+	DeletedAt pgtype.Timestamptz
 }
 
 type Debug struct {
-	ID        int64
-	ProjectID int64
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	FlowHash  *string
 	ServiceID *string
 	Status    string
 	CreatedAt pgtype.Timestamptz
@@ -39,27 +34,35 @@ type Debug struct {
 }
 
 type Enviroment struct {
-	ID        int64
-	ProjectID int64
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	UserID    pgtype.UUID
 	Key       string
 	Value     string
 	Secret    bool
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
 }
 
 type File struct {
-	ID        int64
-	ProjectID int64
-	File      string
-	Filesize  *int64
-	ExpiresAt pgtype.Timestamptz
+	ID           pgtype.UUID
+	Uuid         pgtype.UUID
+	ProjectID    pgtype.UUID
+	UserID       pgtype.UUID
+	FilePath     string
+	OriginalName string
+	Filesize     int64
+	Filetype     string
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	ExpiresAt    pgtype.Timestamptz
 }
 
 type Message struct {
-	ID          int64
-	ProjectID   int64
+	ID          pgtype.UUID
+	ProjectID   pgtype.UUID
 	Caption     string
 	MessageType string
-	File        *string
 	FileID      *string
 	ButtonType  string
 	Buttons     []byte
@@ -67,16 +70,31 @@ type Message struct {
 	Done        int64
 	Fail        int64
 	Status      string
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }
 
 type Project struct {
-	ID           int64
-	Name         *string
+	ID           pgtype.UUID
+	Uuid         pgtype.UUID
+	Name         string
 	Username     *string
 	Avatar       *string
 	AvatarFileID *string
+	OwnerID      pgtype.UUID
+	Flow         []byte
 	IsTemplate   bool
+	LegacyID     *int32
 	DeletedAt    pgtype.Timestamptz
+}
+
+type ProjectResourceSnapshot struct {
+	ID             pgtype.UUID
+	ProjectID      pgtype.UUID
+	DiskBytes      int64
+	DiskFilesBytes int64
+	DiskCmsBytes   int64
+	CreatedAt      pgtype.Timestamptz
 }
 
 type RefreshToken struct {
@@ -87,10 +105,18 @@ type RefreshToken struct {
 }
 
 type Relase struct {
-	ID        int64
-	ProjectID int64
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Version   int32
+	Flow      []byte
 	ServiceID *string
 	Status    string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+type User struct {
+	ID pgtype.UUID
 }
 
 type UserSubscription struct {

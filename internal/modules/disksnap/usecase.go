@@ -4,11 +4,11 @@ package disksnap
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"go.uber.org/zap"
 
+	"github.com/BotSpace/worker-golang/internal/shared/database"
 	"github.com/BotSpace/worker-golang/internal/shared/database/sqlcgen"
 	"github.com/BotSpace/worker-golang/internal/shared/mongox"
 )
@@ -28,7 +28,7 @@ func (u *Usecase) Run(ctx context.Context) {
 	count := 0
 	for _, project := range projects {
 		projectID := uuidFromPG(project.ID)
-		filesBytes, err := u.Q.SumProjectFileBytesForDisk(ctx, project.ID)
+		filesBytes, err := u.Q.SumProjectFileBytes(ctx, project.ID)
 		if err != nil {
 			u.Log.Warn("snapshot: files bytes", zap.String("project", projectID), zap.Error(err))
 			continue
@@ -38,7 +38,7 @@ func (u *Usecase) Run(ctx context.Context) {
 		if err != nil {
 			cmsBytes = 0 // db bo'lmasligi normal (CMS ishlatmagan loyiha)
 		}
-		err = u.Q.InsertProjectResourceSnapshot(ctx, sqlcgen.InsertProjectResourceSnapshotParams{
+		err = u.Q.InsertDiskSnapshot(ctx, sqlcgen.InsertDiskSnapshotParams{
 			ProjectID:      project.ID,
 			DiskBytes:      filesBytes + cmsBytes,
 			DiskFilesBytes: filesBytes,
@@ -54,16 +54,12 @@ func (u *Usecase) Run(ctx context.Context) {
 }
 
 func uuidFromPG(id pgtype.UUID) string {
-	if !id.Valid {
-		return ""
-	}
-	b := id.Bytes
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	return database.UUIDString(id)
 }
 
-func mongoTenant(project sqlcgen.DiskProject) any {
-	if project.LegacyID.Valid {
-		return int64(project.LegacyID.Int32)
+func mongoTenant(project sqlcgen.ListReleasedProjectsForDiskRow) any {
+	if project.LegacyID != nil {
+		return int64(*project.LegacyID)
 	}
 	return uuidFromPG(project.ID)
 }
